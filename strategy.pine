@@ -1,0 +1,107 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © sid-viscous
+
+//@version=5
+strategy("MACD Spot Trading Strategy", overlay=false)
+
+///// Inputs /////
+
+// Backtest range //
+useStartPeriodTime = input.bool(false, "Start", group = "Backtest date range", inline = "Start period")
+backtestStart = input.time(timestamp("1 Aug 2021 00:00 +0300"), "", group="Backtest date range", inline="Start period")
+useEndPeriodTime = input.bool(false, "End", group = "Backtest date range", inline = "End period")
+backtestEnd = input.time(timestamp("14 Aug 2021 00:00 +0300"), "", group = "Backtest date range", inline="End period")
+
+// MACD //
+macdFastLen = input.int(17, "Fast length", group = "MACD")
+macdSlowLen = input.int(37, "Slow length", group = "MACD")
+macdSignalLen = input.int(10, "Signal length", group = "MACD")
+
+// Filters //
+useMacdAngleFilterBuy = input.bool(true, "Buy only on steep MACD crosses", group = "MACD filters", inline = "MACD filter buy")
+macdAngleFilterBuy = input.float(1.1, "", group = "MACD filters", inline = "MACD filter buy")
+
+useMacdAngleFilterSell = input.bool(false, "Sell only on steep MACD crosses", group = "MACD filters", inline = "MACD filter sell")
+macdAngleFilterSell = input.float(1.0, "", group = "MACD filters", inline = "MACD filter sell")
+
+useRsiCutoffFilter = input.bool(true, "Buy only when RSI below cutoff", group = "RSI filter")
+rsiFilterLen = input.int(14, "RSI length")
+rsiFilterCutoff = input.float(58.0, "Cutoff", group = "RSI filter")
+
+useEmaUptrendFilter = input.bool(true, "Buy only on EMA uptrend", group = "EMA filter")
+emaFilterLen = input.int(350, "EMA length", group = "EMA filter")
+emaFilterUptrendLen = input.int(10, "EMA uptrend length", group = "EMA filter")
+
+useAtrCutoffFilter = input.bool(true, "Buy only when ATR is above cutoff", group = "ATR filter")
+atrFilterLen = input.int(14, "ATR length", group = "ATR filter")
+atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter")
+
+
+///// Strategy /////
+
+// MACD crossover (main driving indicator for the strategy) //
+[macdLine, signalLine, histLine] = ta.macd(close, macdFastLen, macdSlowLen, macdSignalLen)
+
+macdBuySignal = ta.crossover(macdLine, signalLine) and macdLine < 0
+macdSellSignal = ta.crossunder(macdLine, signalLine) and macdLine >0
+
+// Filter: Date range //
+startCondition = (useStartPeriodTime and time > backtestStart) or not useStartPeriodTime
+endCondition = (useEndPeriodTime and time < backtestEnd) or not useEndPeriodTime
+dateCondition = startCondition and endCondition
+
+
+// Filter: MACD crossover angle //
+d_macd = macdLine[0] - macdLine[2]
+d_signal = signalLine[0] - macdLine[2]
+macdCrossAngle = math.abs(d_macd-d_signal)
+
+macdCrossBuyFilter = (useMacdAngleFilterBuy and macdCrossAngle >= macdAngleFilterBuy) or not useMacdAngleFilterBuy
+macdCrossSellFilter = (useMacdAngleFilterSell and macdCrossAngle >= macdAngleFilterSell) or not useMacdAngleFilterSell
+
+
+// Filter: RSI cutoff //
+rsiCutoffCondition = ta.rsi(close, rsiFilterLen) <= rsiFilterCutoff
+rsiCutoffFilter = (useRsiCutoffFilter and rsiCutoffCondition) or not useRsiCutoffFilter
+
+
+// Filter: EMA uptrend //
+emaLine = ta.ema(close, emaFilterLen)
+emaUptrendCondition = emaLine[0] > emaLine[emaFilterUptrendLen]
+emaUptrendFilter = (useEmaUptrendFilter and emaUptrendCondition) or not useEmaUptrendFilter
+
+
+// Filter: ATR filter //
+atr = ta.atr(atrFilterLen)
+atrCutoffCondition = atr > atrFilterCutoff
+atrCutoffFilter = (useAtrCutoffFilter and atrCutoffCondition) or not useAtrCutoffFilter
+
+
+///// Plots /////
+plot(macdLine, color=color.blue)
+plot(signalLine, color=color.orange)
+plot(histLine, color=color.red, style=plot.style_histogram)
+
+// Filtered MACD crosses //
+if macdBuySignal and macdCrossBuyFilter and strategy.position_size <= 0
+    label.new(bar_index, macdLine, text="MACD cross up", style=label.style_cross, color=color.green, size=size.tiny)
+    
+if macdSellSignal and macdCrossSellFilter and strategy.position_size > 0
+    label.new(bar_index, macdLine, text="MACD cross down", style=label.style_cross, color=color.red, size=size.tiny)
+    
+
+// EMA uptrend background //
+bgcolor(emaUptrendFilter ? color.new(color.green,50) : color.new(color.red, 50))
+
+// ATR background //
+bgcolor(atrCutoffFilter ? color.rgb(120, 120, 120, 100): color.new(color.purple, 40))
+
+
+///// Place orders /////
+
+buyCondition = dateCondition and macdBuySignal and macdCrossBuyFilter and rsiCutoffFilter and emaUptrendFilter and atrCutoffFilter
+
+sellCondition = strategy.position_size > 0 and macdSellSignal and macdCrossSellFilter
+
+strategy.entry("buy", strategy.long, when = buyCondition)
+strategy.close("buy", when = sellCondition)
