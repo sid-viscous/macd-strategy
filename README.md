@@ -23,7 +23,7 @@ Crossovers are marked on the indicator with green and red crosses.
 | Sell MACD angle | Minimum MACD crossover angle for selling (not normalised, will need calibrating for each pair) |
 
 
-#### RSI cutoff 
+### RSI cutoff 
 
 If the RSI is too high, i.e. approaching overbought the buy trade is avoided.
 
