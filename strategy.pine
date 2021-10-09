@@ -2,7 +2,7 @@
 // © sid-viscous
 
 //@version=5
-strategy("MACD Spot Trading Strategy", overlay=false)
+strategy("Sid's Magic MACD Spot Trading Strategy", overlay=false)
 
 ///// Inputs /////
 
@@ -18,14 +18,14 @@ macdSlowLen = input.int(37, "Slow length", group = "MACD")
 macdSignalLen = input.int(10, "Signal length", group = "MACD")
 
 // Filters //
-useMacdAngleFilterBuy = input.bool(true, "Buy only on steep MACD crosses", group = "MACD filters", inline = "MACD filter buy")
-macdAngleFilterBuy = input.float(1.1, "", group = "MACD filters", inline = "MACD filter buy")
+useMacdAngleFilterBuy = input.bool(true, "Buy only on steep MACD crosses", group = "MACD filters")
+macdAngleFilterBuy = input.float(1.1, "Buy MACD angle", group = "MACD filters")
 
-useMacdAngleFilterSell = input.bool(false, "Sell only on steep MACD crosses", group = "MACD filters", inline = "MACD filter sell")
-macdAngleFilterSell = input.float(1.0, "", group = "MACD filters", inline = "MACD filter sell")
+useMacdAngleFilterSell = input.bool(false, "Sell only on steep MACD crosses", group = "MACD filters")
+macdAngleFilterSell = input.float(1.0, "Sell MACD angle", group = "MACD filters")
 
 useRsiCutoffFilter = input.bool(true, "Buy only when RSI below cutoff", group = "RSI filter")
-rsiFilterLen = input.int(14, "RSI length")
+rsiFilterLen = input.int(14, "RSI length", group = "RSI filter")
 rsiFilterCutoff = input.float(58.0, "Cutoff", group = "RSI filter")
 
 useEmaUptrendFilter = input.bool(true, "Buy only on EMA uptrend", group = "EMA filter")
@@ -39,7 +39,7 @@ atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter")
 
 ///// Strategy /////
 
-// MACD crossover (main driving indicator for the strategy) //
+// MACD crossover (main driving indicator for the strategy)
 [macdLine, signalLine, histLine] = ta.macd(close, macdFastLen, macdSlowLen, macdSignalLen)
 
 macdBuySignal = ta.crossover(macdLine, signalLine) and macdLine < 0
@@ -78,23 +78,25 @@ atrCutoffFilter = (useAtrCutoffFilter and atrCutoffCondition) or not useAtrCutof
 
 
 ///// Plots /////
-plot(macdLine, color=color.blue)
+plot(macdLine, color=color.yellow)
 plot(signalLine, color=color.orange)
 plot(histLine, color=color.red, style=plot.style_histogram)
 
 // Filtered MACD crosses //
 if macdBuySignal and macdCrossBuyFilter and strategy.position_size <= 0
-    label.new(bar_index, macdLine, text="MACD cross up", style=label.style_cross, color=color.green, size=size.tiny)
+    label.new(bar_index, macdLine, text="MACD cross up", style=label.style_cross, color=color.green, size=size.small)
     
 if macdSellSignal and macdCrossSellFilter and strategy.position_size > 0
-    label.new(bar_index, macdLine, text="MACD cross down", style=label.style_cross, color=color.red, size=size.tiny)
+    label.new(bar_index, macdLine, text="MACD cross down", style=label.style_cross, color=color.red, size=size.small)
     
+// RSI overbought background //
+bgcolor(rsiCutoffFilter ? color.new(color.white,100) : color.new(color.blue, 40))
 
 // EMA uptrend background //
-bgcolor(emaUptrendFilter ? color.new(color.green,50) : color.new(color.red, 50))
+bgcolor(emaUptrendFilter ? color.new(color.green,50) : color.new(color.red, 70))
 
 // ATR background //
-bgcolor(atrCutoffFilter ? color.rgb(120, 120, 120, 100): color.new(color.purple, 40))
+bgcolor(atrCutoffFilter ? color.new(color.white, 100): color.new(color.purple, 60))
 
 
 ///// Place orders /////
