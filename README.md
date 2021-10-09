@@ -2,6 +2,8 @@
 
 Trades on MACD crossover signals, using RSI, EMA, ATR, and crossover angles as filters.
 
+Default settings are optimised for BTCUSDT 15m. Adjust settings for other pairs and timeframes.
+
 ## Filters
 
 ### MACD crossover angle
