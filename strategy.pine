@@ -36,14 +36,21 @@ useAtrCutoffFilter = input.bool(true, "Buy only when ATR is above cutoff", group
 atrFilterLen = input.int(14, "ATR length", group = "ATR filter")
 atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter")
 
+// Stops //
+useStopLoss = input.bool(false, "Use stop loss", group = "Stops", inline = "Stop loss")
+stopLossTicks = input.float(0, "", group = "Stops", inline = "Stop loss", tooltip = "Number of ticks")
+
+useTakeProfit = input.bool(false, "Use take profit", group = "Stops", inline = "Take profit")
+takeProfitTicks = input.float(0, "", group = "Stops", inline = "Take profit", tooltip = "Number of ticks")
+
 
 ///// Strategy /////
 
 // MACD crossover (main driving indicator for the strategy)
 [macdLine, signalLine, histLine] = ta.macd(close, macdFastLen, macdSlowLen, macdSignalLen)
 
-macdBuySignal = ta.crossover(macdLine, signalLine) and macdLine < 0
-macdSellSignal = ta.crossunder(macdLine, signalLine) and macdLine >0
+macdBuySignal = ta.crossover(macdLine, signalLine) and macdLine < 0 and signalLine < 0
+macdSellSignal = ta.crossunder(macdLine, signalLine) and macdLine > 0 and signalLine > 0
 
 // Filter: Date range //
 startCondition = (useStartPeriodTime and time > backtestStart) or not useStartPeriodTime
@@ -101,9 +108,18 @@ bgcolor(atrCutoffFilter ? color.new(color.white, 100): color.new(color.purple, 6
 
 ///// Place orders /////
 
+// Conditions //
+
 buyCondition = dateCondition and macdBuySignal and macdCrossBuyFilter and rsiCutoffFilter and emaUptrendFilter and atrCutoffFilter
 
 sellCondition = strategy.position_size > 0 and macdSellSignal and macdCrossSellFilter
 
+// Entry / exit //
 strategy.entry("buy", strategy.long, when = buyCondition)
 strategy.close("buy", when = sellCondition)
+
+// Stops //
+if useStopLoss
+    strategy.exit("exit", "buy", loss = stopLossTicks)
+if useTakeProfit
+    strategy.exit("exit", "buy", profit = takeProfitTicks)
