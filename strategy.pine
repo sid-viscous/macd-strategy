@@ -17,24 +17,33 @@ macdFastLen = input.int(17, "Fast length", group = "MACD")
 macdSlowLen = input.int(37, "Slow length", group = "MACD")
 macdSignalLen = input.int(10, "Signal length", group = "MACD")
 
+// Stoch //
+useStoch = input.bool(false, "Use Stoch crosses instead of MACD", group = "STOCH")
+stochLen = input.int(10, "Stochastic length", group = "STOCH")
+stochK = input.int(5, "K smoothing factor", group = "STOCH")
+stochD = input.int(10, "D smoothing factor", group = "STOCH")
+stochOverbought = input.float(80.0, "Sell only when stoch over", group = "STOCH")
+stochOversold = input.float(20.0, "Buy only when stoch under", group = "STOCH")
+
 // Filters //
-useMacdAngleFilterBuy = input.bool(true, "Buy only on steep MACD crosses", group = "MACD filters")
-macdAngleFilterBuy = input.float(1.1, "Buy MACD angle", group = "MACD filters")
+useCrossAngleFilterBuy = input.bool(true, "Buy only on steep crosses", group = "Cross filters")
+crossAngleFilterBuy = input.float(1.1, "Buy angle", group = "Cross filters")
 
-useMacdAngleFilterSell = input.bool(false, "Sell only on steep MACD crosses", group = "MACD filters")
-macdAngleFilterSell = input.float(1.0, "Sell MACD angle", group = "MACD filters")
+useCrossAngleFilterSell = input.bool(false, "Sell only on steep  crosses", group = "Cross filters")
+crossAngleFilterSell = input.float(1.0, "Sell angle", group = "Cross filters")
 
-useRsiCutoffFilter = input.bool(true, "Buy only when RSI below cutoff", group = "RSI filter")
-rsiFilterLen = input.int(14, "RSI length", group = "RSI filter")
-rsiFilterCutoff = input.float(58.0, "Cutoff", group = "RSI filter")
+useRsiCutoffFilter = input.bool(true, "Buy only when RSI below cutoff", group = "RSI filter (blue)")
+rsiFilterLen = input.int(14, "RSI length", group = "RSI filter (blue)")
+rsiFilterCutoff = input.float(58.0, "Cutoff", group = "RSI filter (blue)")
 
-useEmaUptrendFilter = input.bool(true, "Buy only on EMA uptrend", group = "EMA filter")
-emaFilterLen = input.int(350, "EMA length", group = "EMA filter")
-emaFilterUptrendLen = input.int(10, "EMA uptrend length", group = "EMA filter")
+useMaUptrendFilter = input.bool(true, "Buy only on MA uptrend", group = "MA filter (red)")
+maUptrendType = input.string("EMA", "MA type", options=["EMA", "SMA", "SWMA", "VWMA", "WMA"], group = "MA filter (red)")
+maFilterLen = input.int(350, "MA length", group = "MA filter (red)")
+maFilterUptrendLen = input.int(10, "MA uptrend length", group = "MA filter (red)")
 
-useAtrCutoffFilter = input.bool(true, "Buy only when ATR is above cutoff", group = "ATR filter")
-atrFilterLen = input.int(14, "ATR length", group = "ATR filter")
-atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter")
+useAtrCutoffFilter = input.bool(true, "Buy only when ATR is above cutoff", group = "ATR filter (purple)")
+atrFilterLen = input.int(14, "ATR length", group = "ATR filter (purple)")
+atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter (purple)")
 
 // Stops //
 useStopLoss = input.bool(false, "Use stop loss", group = "Stops", inline = "Stop loss")
@@ -43,14 +52,57 @@ stopLossTicks = input.float(0, "", group = "Stops", inline = "Stop loss", toolti
 useTakeProfit = input.bool(false, "Use take profit", group = "Stops", inline = "Take profit")
 takeProfitTicks = input.float(0, "", group = "Stops", inline = "Take profit", tooltip = "Number of ticks")
 
+// Whale mode (for some reason this gave really good profits on Stoch mode) //
+useReverseLogic = input.bool(false, "Reverse buy/sell signals", group = "Other", tooltip = "For some reason, this dramatically increased profits on stoch mode")
+
 
 ///// Strategy /////
 
 // MACD crossover (main driving indicator for the strategy)
 [macdLine, signalLine, histLine] = ta.macd(close, macdFastLen, macdSlowLen, macdSignalLen)
 
-macdBuySignal = ta.crossover(macdLine, signalLine) and macdLine < 0 and signalLine < 0
-macdSellSignal = ta.crossunder(macdLine, signalLine) and macdLine > 0 and signalLine > 0
+
+// Stochastic: macdLine is actually K and signalLine is actually D
+kLine = ta.ema(ta.stoch(close, high, low, stochLen), stochK)
+dLine = ta.ema(kLine, stochD)
+
+
+// Select crossover lines to use for strategy, MACD or Stoch
+line1 = if useStoch
+    dLine
+else
+    macdLine
+    
+line2 = if useStoch
+    kLine
+else
+    signalLine
+
+centerLine = if useStoch
+    50
+else
+    0
+    
+oversold = if useStoch
+    kLine < stochOversold
+else
+    signalLine < 0 and macdLine < 0
+
+overbought = if useStoch
+    kLine > stochOverbought
+else
+    signalLine > 0 and macdLine > 0
+
+
+buySignal = if not useReverseLogic 
+    ta.crossover(line1, line2) and oversold
+else
+    ta.crossunder(line1, line2) and overbought
+    
+sellSignal = if not useReverseLogic
+    ta.crossunder(line1, line2) and overbought
+else
+    ta.crossover(line1, line2) and oversold
 
 // Filter: Date range //
 startCondition = (useStartPeriodTime and time > backtestStart) or not useStartPeriodTime
@@ -58,24 +110,35 @@ endCondition = (useEndPeriodTime and time < backtestEnd) or not useEndPeriodTime
 dateCondition = startCondition and endCondition
 
 
-// Filter: MACD crossover angle //
-d_macd = macdLine[0] - macdLine[2]
-d_signal = signalLine[0] - macdLine[2]
-macdCrossAngle = math.abs(d_macd-d_signal)
+// Filter: Crossover angle //
+d_line1 = line1[0] - line1[1]
+d_line2 = line2[0] - line2[1]
+crossAngle = math.abs(d_line1-d_line2)
 
-macdCrossBuyFilter = (useMacdAngleFilterBuy and macdCrossAngle >= macdAngleFilterBuy) or not useMacdAngleFilterBuy
-macdCrossSellFilter = (useMacdAngleFilterSell and macdCrossAngle >= macdAngleFilterSell) or not useMacdAngleFilterSell
+crossAngleBuyFilter = (useCrossAngleFilterBuy and crossAngle >= crossAngleFilterBuy) or not useCrossAngleFilterBuy
+crossAngleSellFilter = (useCrossAngleFilterSell and crossAngle >= crossAngleFilterSell) or not useCrossAngleFilterSell
 
 
 // Filter: RSI cutoff //
 rsiCutoffCondition = ta.rsi(close, rsiFilterLen) <= rsiFilterCutoff
 rsiCutoffFilter = (useRsiCutoffFilter and rsiCutoffCondition) or not useRsiCutoffFilter
 
+// "EMA", "SMA", "SWMA", "VWMA", "WMA"
 
-// Filter: EMA uptrend //
-emaLine = ta.ema(close, emaFilterLen)
-emaUptrendCondition = emaLine[0] > emaLine[emaFilterUptrendLen]
-emaUptrendFilter = (useEmaUptrendFilter and emaUptrendCondition) or not useEmaUptrendFilter
+// Filter: MA uptrend //
+maLine = if maUptrendType == "EMA"
+    ta.ema(close, maFilterLen)
+else if maUptrendType == "SMA"
+    ta.sma(close, maFilterLen)
+else if maUptrendType == "SWMA"
+    ta.swma(close)
+else if maUptrendType == "VWMA"
+    ta.vwma(close, maFilterLen)
+else if maUptrendType == "WMA"
+    ta.wma(close, maFilterLen)
+
+maUptrendCondition = maLine[0] > maLine[maFilterUptrendLen]
+maUptrendFilter = (useMaUptrendFilter and maUptrendCondition) or not useMaUptrendFilter
 
 
 // Filter: ATR filter //
@@ -85,22 +148,23 @@ atrCutoffFilter = (useAtrCutoffFilter and atrCutoffCondition) or not useAtrCutof
 
 
 ///// Plots /////
-plot(macdLine, color=color.yellow)
-plot(signalLine, color=color.orange)
-plot(histLine, color=color.red, style=plot.style_histogram)
+plot(line1, color=color.yellow)
+plot(line2, color=color.orange)
+// if not useStoch
+//     plot(histLine, color=color.red, style=plot.style_histogram)
 
 // Filtered MACD crosses //
-if macdBuySignal and macdCrossBuyFilter and strategy.position_size <= 0
-    label.new(bar_index, macdLine, text="MACD cross up", style=label.style_cross, color=color.green, size=size.small)
+if buySignal and crossAngleBuyFilter and strategy.position_size <= 0
+    label.new(bar_index, line1, text="Cross up", style=label.style_cross, color=color.green, size=size.small)
     
-if macdSellSignal and macdCrossSellFilter and strategy.position_size > 0
-    label.new(bar_index, macdLine, text="MACD cross down", style=label.style_cross, color=color.red, size=size.small)
+if sellSignal and crossAngleSellFilter and strategy.position_size > 0
+    label.new(bar_index, line1, text="Cross down", style=label.style_cross, color=color.red, size=size.small)
     
 // RSI overbought background //
 bgcolor(rsiCutoffFilter ? color.new(color.white,100) : color.new(color.blue, 40))
 
-// EMA uptrend background //
-bgcolor(emaUptrendFilter ? color.new(color.green,50) : color.new(color.red, 70))
+// MA uptrend background //
+bgcolor(maUptrendFilter ? color.new(color.green,50) : color.new(color.red, 70))
 
 // ATR background //
 bgcolor(atrCutoffFilter ? color.new(color.white, 100): color.new(color.purple, 60))
@@ -110,9 +174,9 @@ bgcolor(atrCutoffFilter ? color.new(color.white, 100): color.new(color.purple, 6
 
 // Conditions //
 
-buyCondition = dateCondition and macdBuySignal and macdCrossBuyFilter and rsiCutoffFilter and emaUptrendFilter and atrCutoffFilter
+buyCondition = dateCondition and buySignal and crossAngleBuyFilter and rsiCutoffFilter and maUptrendFilter and atrCutoffFilter
 
-sellCondition = strategy.position_size > 0 and macdSellSignal and macdCrossSellFilter
+sellCondition = strategy.position_size > 0 and sellSignal and crossAngleSellFilter
 
 // Entry / exit //
 strategy.entry("buy", strategy.long, when = buyCondition)
