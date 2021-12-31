@@ -13,35 +13,35 @@ useEndPeriodTime = input.bool(false, "End", group = "Backtest date range", inlin
 backtestEnd = input.time(timestamp("14 Aug 2021 00:00 +0300"), "", group = "Backtest date range", inline="End period")
 
 // MACD //
-macdFastLen = input.int(17, "Fast length", group = "MACD")
+macdFastLen = input.int(13, "Fast length", group = "MACD")
 macdSlowLen = input.int(37, "Slow length", group = "MACD")
-macdSignalLen = input.int(10, "Signal length", group = "MACD")
+macdSignalLen = input.int(11, "Signal length", group = "MACD")
 
 // Filters //
-useMacdAngleFilterBuy = input.bool(true, "Buy only on steep MACD crosses", group = "MACD filters")
-macdAngleFilterBuy = input.float(1.1, "Buy MACD angle", group = "MACD filters")
+useMacdAngleFilterBuy = input.bool(false, "Buy only on steep MACD crosses", group = "MACD filters")
+macdAngleFilterBuy = input.float(0.0, "Buy MACD angle", group = "MACD filters")
 
 useMacdAngleFilterSell = input.bool(false, "Sell only on steep MACD crosses", group = "MACD filters")
-macdAngleFilterSell = input.float(1.0, "Sell MACD angle", group = "MACD filters")
+macdAngleFilterSell = input.float(0.0, "Sell MACD angle", group = "MACD filters")
 
 useRsiCutoffFilter = input.bool(true, "Buy only when RSI below cutoff", group = "RSI filter")
 rsiFilterLen = input.int(14, "RSI length", group = "RSI filter")
-rsiFilterCutoff = input.float(58.0, "Cutoff", group = "RSI filter")
+rsiFilterCutoff = input.float(61.0, "Cutoff", group = "RSI filter")
 
 useEmaUptrendFilter = input.bool(true, "Buy only on EMA uptrend", group = "EMA filter")
-emaFilterLen = input.int(350, "EMA length", group = "EMA filter")
-emaFilterUptrendLen = input.int(10, "EMA uptrend length", group = "EMA filter")
+emaFilterLen = input.int(36, "EMA length", group = "EMA filter")
+emaFilterUptrendLen = input.int(2, "EMA uptrend length", group = "EMA filter")
 
 useAtrCutoffFilter = input.bool(true, "Buy only when ATR is above cutoff", group = "ATR filter")
 atrFilterLen = input.int(14, "ATR length", group = "ATR filter")
-atrFilterCutoff = input.float(200, "Cutoff", group = "ATR filter")
+atrFilterCutoff = input.float(0.4, "Cutoff", group = "ATR filter", tooltip = "Percent of current price (%)")
 
 // Stops //
-useStopLoss = input.bool(false, "Use stop loss", group = "Stops", inline = "Stop loss")
-stopLossTicks = input.float(0, "", group = "Stops", inline = "Stop loss", tooltip = "Number of ticks")
+useStopLoss = input.bool(true, "Use stop loss", group = "Stops", inline = "Stop loss")
+stopLossPercent = input.float(1.0, "", group = "Stops", inline = "Stop loss", tooltip = "Percent (%)")
 
-useTakeProfit = input.bool(false, "Use take profit", group = "Stops", inline = "Take profit")
-takeProfitTicks = input.float(0, "", group = "Stops", inline = "Take profit", tooltip = "Number of ticks")
+useTakeProfit = input.bool(true, "Use take profit", group = "Stops", inline = "Take profit")
+takeProfitPercent = input.float(6, "", group = "Stops", inline = "Take profit", tooltip = "Percent (%)")
 
 
 ///// Strategy /////
@@ -80,7 +80,7 @@ emaUptrendFilter = (useEmaUptrendFilter and emaUptrendCondition) or not useEmaUp
 
 // Filter: ATR filter //
 atr = ta.atr(atrFilterLen)
-atrCutoffCondition = atr > atrFilterCutoff
+atrCutoffCondition = 100*atr/close > atrFilterCutoff
 atrCutoffFilter = (useAtrCutoffFilter and atrCutoffCondition) or not useAtrCutoffFilter
 
 
@@ -106,6 +106,12 @@ bgcolor(emaUptrendFilter ? color.new(color.green,50) : color.new(color.red, 70))
 bgcolor(atrCutoffFilter ? color.new(color.white, 100): color.new(color.purple, 60))
 
 
+// Exit prices
+stopLossTicks = close*stopLossPercent/100
+takeProfitTicks = close*takeProfitPercent/100
+stopLossPrice = close - stopLossTicks
+takeProfitPrice = close + takeProfitTicks
+
 ///// Place orders /////
 
 // Conditions //
@@ -115,11 +121,16 @@ buyCondition = dateCondition and macdBuySignal and macdCrossBuyFilter and rsiCut
 sellCondition = strategy.position_size > 0 and macdSellSignal and macdCrossSellFilter
 
 // Entry / exit //
-strategy.entry("buy", strategy.long, when = buyCondition)
-strategy.close("buy", when = sellCondition)
+//buyMessage = "Buy \n Take profit " + str.tostring(takeProfitPrice) + "\nStop loss " + str.tostring(stopLossPrice)
+buyMessage = "Buy"
+
+strategy.entry(buyMessage, strategy.long, when = buyCondition)
+strategy.close(buyMessage, when = sellCondition)
+
+
 
 // Stops //
 if useStopLoss
-    strategy.exit("exit", "buy", loss = stopLossTicks)
+    strategy.exit("exit", buyMessage, stop = stopLossPrice)
 if useTakeProfit
-    strategy.exit("exit", "buy", profit = takeProfitTicks)
+    strategy.exit("exit", buyMessage, limit = takeProfitPrice)
